@@ -5,7 +5,4 @@ import { defineConfig } from 'astro/config';
 export default defineConfig({
 	base: 'npm-provenance-overview',
 	site: 'https://delucis.github.io/',
-	image: {
-		domains: ['astro.badg.es'],
-	},
 });
