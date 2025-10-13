@@ -1,5 +1,6 @@
 ---
 import { Image } from 'astro:assets';
+const canonical = new URL(Astro.url.pathname, Astro.site);
 ---
 
 <!doctype html>
@@ -10,6 +11,14 @@ import { Image } from 'astro:assets';
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<meta name="generator" content={Astro.generator} />
 		<title>npm provenance overview</title>
+		<link rel="canonical" href={canonical} />
+		<meta
+			name="description"
+			content="Quickly see publishing security for a maintainer’s npm packages."
+		/>
+		<meta property="og:type" content="website" />
+		<meta name="og:image" content={new URL('og.jpg', canonical)} />
+		<meta name="twitter:card" content="summary_large_image" />
 	</head>
 	<body>
 		<slot />
