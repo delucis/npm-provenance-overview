@@ -2,6 +2,7 @@
 import InsecureIcon from '../assets/insecure-icon.svg';
 import ProvenanceIcon from '../assets/provenance-icon.svg';
 import TrustedIcon from '../assets/trusted-icon.svg';
+import Spinner from '../components/Spinner.astro';
 import Layout from '../layouts/Layout.astro';
 
 const content = {
@@ -88,7 +89,7 @@ const content = {
 		<div data-result-slot aria-live="polite"></div>
 
 		<template data-loading-template>
-			<h2>Loading packages for <span data-query></span><span class="loader"></span></h2>
+			<h2>Loading packages for <span data-query></span><Spinner /></h2>
 		</template>
 
 		<template data-result-template>
@@ -266,21 +267,6 @@ const content = {
 			padding: 0;
 			li:not(:first-child, :last-child) {
 				margin-block: 0.5em;
-			}
-		}
-
-		.loader {
-			display: inline-block;
-			width: 1em;
-			aspect-ratio: 4;
-			background: radial-gradient(circle closest-side, currentColor 90%, #0000) 0 / calc(100% / 3)
-				100% space;
-			clip-path: inset(0 100% 0 0);
-			animation: l1 1s steps(4) infinite;
-		}
-		@keyframes l1 {
-			to {
-				clip-path: inset(0 -34% 0 0);
 			}
 		}
 	</style>
