@@ -151,22 +151,15 @@ const content = {
 	<script>
 		const form = document.querySelector('form')!;
 		const resultSlot = document.querySelector<HTMLElement>('[data-result-slot]')!;
-		const loadingTemplate = document.querySelector<HTMLTemplateElement>(
-			'template[data-loading-template]'
-		)!;
-		const resultsTemplate = document.querySelector<HTMLTemplateElement>(
-			'template[data-result-template]'
-		)!;
-		const packageTemplate = document.querySelector<HTMLTemplateElement>(
-			'template[data-package-template]'
-		)!;
-		const title = document.querySelector('title')!;
+
+		/** Formatter for compact representations of quantities, e.g. `2.1M` or `17k`. */
+		const { format: shortNum } = new Intl.NumberFormat('en', { notation: 'compact' });
 
 		form.addEventListener('submit', submitForm);
 
-		const q = new URLSearchParams(window.location.search).get('maintainer');
-		if (q) {
-			form.maintainer.value = q;
+		const maintainerQueryString = new URLSearchParams(window.location.search).get('maintainer');
+		if (maintainerQueryString) {
+			form.maintainer.value = maintainerQueryString;
 			submitForm();
 		}
 
@@ -174,25 +167,24 @@ const content = {
 			try {
 				event?.preventDefault();
 				const query = form.maintainer.value.toLowerCase();
-				const loadingState = loadingTemplate.content.cloneNode(true) as HTMLElement;
-				loadingState.querySelector('[data-query]')!.textContent = query;
-				resultSlot.replaceChildren(loadingState);
-
-				title.innerText = `${query} | npm provenance overview`;
-				const path = new URL(`?maintainer=${query}`, window.location.href).href;
-				window.history.pushState({ path }, '', path);
+				displayLoadingState(query);
+				updatePageMeta(query);
 
 				const packages = await getPackages(query);
+				const categories = {
+					trusted: packages.filter((pkg) => pkg.provenance === 'trustedPublisher'),
+					provenance: packages.filter((pkg) => pkg.provenance === true),
+					insecure: packages.filter((pkg) => !pkg.provenance),
+				};
 
-				const trusted = packages.filter((pkg) => pkg.provenance === 'trustedPublisher');
-				const provenance = packages.filter((pkg) => pkg.provenance === true);
-				const insecure = packages.filter((pkg) => !pkg.provenance);
+				const resultsTemp = document.querySelector<HTMLTemplateElement>('[data-result-template]')!;
+				const resultsEl = resultsTemp.content.cloneNode(true) as HTMLDivElement;
+				resultsEl.querySelector('[data-query]')!.textContent = query;
 
-				const template = resultsTemplate.content.cloneNode(true) as HTMLDivElement;
-				template.querySelector('[data-query]')!.textContent = query;
+				const packageTemp = document.querySelector<HTMLTemplateElement>('[data-package-template]')!;
 
-				for (const [key, list] of Object.entries({ trusted, provenance, insecure })) {
-					const target = template.querySelector(`[data-${key}-list]`)!;
+				for (const [key, list] of Object.entries(categories)) {
+					const target = resultsEl.querySelector(`[data-${key}-list]`)!;
 					if (list.length === 0) {
 						const noResultP = document.createElement('p');
 						const strong = document.createElement('strong');
@@ -203,34 +195,56 @@ const content = {
 						}[key]!;
 						noResultP.append(strong);
 						target.replaceWith(noResultP);
-					}
-					for (const pkg of list) {
-						const li = packageTemplate.content.cloneNode(true) as HTMLLIElement;
-						li.querySelector<HTMLElement>('[data-package-name]')!.textContent = pkg.name;
-						li.querySelector('a')!.href = `https://www.npmjs.com/package/${pkg.name}`;
-						const downloadsSpan = li.querySelector<HTMLElement>('[data-package-downloads]')!;
-						if (pkg.downloads) {
-							downloadsSpan.textContent = shortNum(pkg.downloads);
-						} else {
-							downloadsSpan.parentElement?.replaceWith();
-						}
-						target.append(li);
+					} else {
+						target.append(
+							...list.map((pkg) => {
+								const li = packageTemp.content.cloneNode(true) as HTMLLIElement;
+								li.querySelector<HTMLElement>('[data-package-name]')!.textContent = pkg.name;
+								li.querySelector('a')!.href = `https://www.npmjs.com/package/${pkg.name}`;
+								const downloadsSpan = li.querySelector<HTMLElement>('[data-package-downloads]')!;
+								if (pkg.downloads) {
+									downloadsSpan.textContent = shortNum(pkg.downloads);
+								} else {
+									downloadsSpan.parentElement?.replaceWith();
+								}
+								return li;
+							})
+						);
 					}
 				}
 
 				if (packages.length === 0) {
 					const noResultP = document.createElement('p');
 					noResultP.innerText = 'No packages found.';
-					template.querySelector('.categories')?.replaceChildren(noResultP);
+					resultsEl.querySelector('.categories')?.replaceChildren(noResultP);
 				}
 
-				resultSlot.replaceChildren(template);
+				resultSlot.replaceChildren(resultsEl);
 			} catch (error: any) {
 				console.error(error);
 				resultSlot.innerText = `Something went wrong: ${error?.message || error}`;
 			}
 		}
 
+		/** Render loading state to page. */
+		function displayLoadingState(query: string) {
+			const loadingTemplate =
+				document.querySelector<HTMLTemplateElement>('[data-loading-template]')!;
+			const loadingEl = loadingTemplate.content.cloneNode(true) as HTMLElement;
+			loadingEl.querySelector('[data-query]')!.textContent = query;
+			resultSlot.replaceChildren(loadingEl);
+		}
+
+		/** Update page `<title>` and query string. */
+		function updatePageMeta(query: string) {
+			document.title = `${query} | npm provenance overview`;
+			if (new URLSearchParams(window.location.search).get('maintainer') !== query) {
+				const path = new URL(`?maintainer=${query}`, window.location.href).href;
+				window.history.pushState({ path }, '', path);
+			}
+		}
+
+		/** Get package metadata from the npm registry. Uses `fast-npm-meta` for provenance data. */
 		async function getPackages(usernameOrScope: string) {
 			const searchRes = await fetch(
 				`https://registry.npmjs.org/-/v1/search?popularity=1.0&quality=0.0&maintenance=0.0&size=250&text=maintainer%3A${usernameOrScope}`
@@ -253,22 +267,6 @@ const content = {
 						.monthly,
 				}))
 				.sort((a, b) => (b.downloads || 0) - (a.downloads || 0));
-		}
-
-		function shortNum(num: number) {
-			let divisor = 1;
-			let unit = '';
-			if (num > 1_000_000) {
-				divisor = 1_000_000;
-				unit = 'M';
-			} else if (num > 1_000) {
-				divisor = 1_000;
-				unit = 'k';
-			}
-			const shortened = num / divisor;
-			return unit
-				? (shortened >= 100 ? Math.round(shortened) : shortened.toFixed(1)) + unit
-				: String(num);
 		}
 	</script>
 
