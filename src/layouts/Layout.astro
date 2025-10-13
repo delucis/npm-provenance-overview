@@ -1,7 +1,7 @@
 ---
 import BuiltWithAstro from '../assets/built-with-astro.svg';
 
-const canonical = new URL(Astro.url.pathname, Astro.site);
+if (Astro.url.pathname.at(-1) !== '/') Astro.url.pathname += '/';
 ---
 
 <!doctype html>
@@ -9,16 +9,16 @@ const canonical = new URL(Astro.url.pathname, Astro.site);
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width" />
-		<link rel="icon" type="image/svg+xml" href={new URL('favicon.svg', canonical)} />
+		<link rel="icon" type="image/svg+xml" href={new URL('favicon.svg', Astro.url)} />
 		<meta name="generator" content={Astro.generator} />
 		<title>npm provenance overview</title>
-		<link rel="canonical" href={canonical} />
+		<link rel="canonical" href={Astro.url} />
 		<meta
 			name="description"
 			content="Quickly see publishing security for a maintainer’s npm packages."
 		/>
 		<meta property="og:type" content="website" />
-		<meta name="og:image" content={new URL('og.jpg', canonical)} />
+		<meta name="og:image" content={new URL('og.jpg', Astro.url)} />
 		<meta name="twitter:card" content="summary_large_image" />
 	</head>
 	<body>
