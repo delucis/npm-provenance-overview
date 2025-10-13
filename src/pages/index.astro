@@ -102,13 +102,48 @@ const content = {
 								<h3>
 									<Icon aria-hidden="true" /> {title}
 								</h3>
-								<p>{description}</p>
+								<p class="dim">{description}</p>
 								<ol {...{ [`data-${title.toLowerCase()}-list`]: '' }} />
 							</div>
 						))
 					}
 				</div>
 			</div>
+		</template>
+
+		<svg style="display: none;">
+			<symbol id="icon:npm" viewBox="0 0 430 512">
+				<path
+					fill="currentColor"
+					d="M71.6 112.57v286.65h143.44V184.18h71.6v215.04h71.62V112.57zm358.48-71.61v430.08H0V40.96z"
+				></path>
+			</symbol>
+			<symbol id="icon:download" viewBox="0 0 7.22 11.76">
+				<path
+					fill="currentColor"
+					d="M4.59 4.94V0H2.62v4.94H0l3.28 4.59 3.94-4.59zM.11 10.76h7v1h-7z"></path>
+			</symbol>
+		</svg>
+
+		<template data-package-template>
+			<li class="flex">
+				<span data-package-name></span>
+				<span class="flex dim">
+					<span class="flex">
+						<svg width="11" height="11" aria-hidden="true" viewBox="0 0 430 512"
+							><use href="#icon:download"></use></svg
+						>
+						<span data-package-downloads></span>
+						<span class="sr-only">downloads</span>
+					</span>
+					<a target="_blank" rel="noopener noreferrer" class="flex">
+						<span class="sr-only">npm</span>
+						<svg width="16" aria-hidden="true" viewBox="0 0 430 512"
+							><use href="#icon:npm"></use></svg
+						>
+					</a>
+				</span>
+			</li>
 		</template>
 	</main>
 
@@ -120,6 +155,9 @@ const content = {
 		)!;
 		const resultsTemplate = document.querySelector<HTMLTemplateElement>(
 			'template[data-result-template]'
+		)!;
+		const packageTemplate = document.querySelector<HTMLTemplateElement>(
+			'template[data-package-template]'
 		)!;
 		const title = document.querySelector('title')!;
 
@@ -166,11 +204,15 @@ const content = {
 						target.replaceWith(noResultP);
 					}
 					for (const pkg of list) {
-						const li = document.createElement('li');
-						const a = document.createElement('a');
-						a.textContent = pkg.name;
-						a.href = `https://www.npmjs.com/package/${pkg.name}`;
-						li.append(a);
+						const li = packageTemplate.content.cloneNode(true) as HTMLLIElement;
+						li.querySelector<HTMLElement>('[data-package-name]')!.textContent = pkg.name;
+						li.querySelector('a')!.href = `https://www.npmjs.com/package/${pkg.name}`;
+						const downloadsSpan = li.querySelector<HTMLElement>('[data-package-downloads]')!;
+						if (pkg.downloads) {
+							downloadsSpan.textContent = shortNum(pkg.downloads);
+						} else {
+							downloadsSpan.parentElement?.replaceWith();
+						}
 						target.append(li);
 					}
 				}
@@ -188,27 +230,51 @@ const content = {
 			}
 		}
 
-		async function getPackages(
-			usernameOrScope: string
-		): Promise<Array<{ name: string; provenance?: 'trustedPublisher' | boolean }>> {
+		async function getPackages(usernameOrScope: string) {
 			const searchRes = await fetch(
 				`https://registry.npmjs.org/-/v1/search?popularity=1.0&quality=0.0&maintenance=0.0&size=250&text=maintainer%3A${usernameOrScope}`
 			);
 			const searchJson = (await searchRes.json()) as {
-				objects: Array<{ package: { name: string } }>;
+				objects: Array<{ package: { name: string }; downloads: { monthly: number } }>;
 			};
 			if (searchJson.objects.length === 0) return [];
-			const packages = searchJson.objects.map((obj) => obj.package.name);
-			const metaRes = await fetch(`https://npm.antfu.dev/${packages.join('+')}?metadata=true`);
+			const packageNames = searchJson.objects.map((obj) => obj.package.name);
+			const metaRes = await fetch(`https://npm.antfu.dev/${packageNames.join('+')}?metadata=true`);
 			const metaJson = await metaRes.json();
-			return Array.isArray(metaJson) ? metaJson : [metaJson];
+			const packages = (Array.isArray(metaJson) ? metaJson : [metaJson]) as Array<{
+				name: string;
+				provenance?: 'trustedPublisher' | boolean;
+			}>;
+			return packages
+				.map((pkg) => ({
+					...pkg,
+					downloads: searchJson.objects.find((obj) => obj.package.name === pkg.name)?.downloads
+						.monthly,
+				}))
+				.sort((a, b) => (b.downloads || 0) - (a.downloads || 0));
+		}
+
+		function shortNum(num: number) {
+			let divisor = 1;
+			let unit = '';
+			if (num > 1_000_000) {
+				divisor = 1_000_000;
+				unit = 'M';
+			} else if (num > 1_000) {
+				divisor = 1_000;
+				unit = 'k';
+			}
+			const shortened = num / divisor;
+			return unit
+				? (shortened >= 100 ? Math.round(shortened) : shortened.toFixed(1)) + unit
+				: String(num);
 		}
 	</script>
 
 	<style>
 		main {
 			padding: 1em;
-			max-width: 60rem;
+			max-width: 68rem;
 		}
 
 		h1 {
@@ -241,7 +307,7 @@ const content = {
 
 			@media (min-width: 40rem) {
 				grid-template-columns: repeat(3, 1fr);
-				gap: 0.5em 1em;
+				gap: 0.5em 3em;
 				& > * {
 					grid-row: 1 / 4;
 					grid-template-rows: subgrid;
@@ -250,8 +316,10 @@ const content = {
 
 			p {
 				margin: 0;
-				opacity: 0.8;
 				line-height: 1.4;
+			}
+			.dim {
+				opacity: 0.7;
 			}
 			h3 {
 				display: flex;
@@ -265,9 +333,29 @@ const content = {
 			list-style: none;
 			margin: 0;
 			padding: 0;
-			li:not(:first-child, :last-child) {
-				margin-block: 0.5em;
+
+			li {
+				gap: 1em;
+				justify-content: space-between;
+
+				& > * {
+					gap: 1em;
+				}
 			}
+
+			li {
+				margin-block: 0.5em;
+				&:first-child {
+					margin-top: 0;
+				}
+				&:last-child {
+					margin-bottom: 0;
+				}
+			}
+		}
+		.flex {
+			display: flex;
+			align-items: center;
 		}
 	</style>
 </Layout>
