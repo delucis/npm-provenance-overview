@@ -149,6 +149,13 @@ const content = {
 	</main>
 
 	<script>
+		interface Package {
+			name: string;
+			provenance?: boolean;
+			trustedPublisher?: boolean;
+			downloads?: number;
+		}
+
 		const form = document.querySelector('form')!;
 		const resultSlot = document.querySelector<HTMLElement>('[data-result-slot]')!;
 
@@ -171,11 +178,18 @@ const content = {
 				updatePageMeta(query);
 
 				const packages = await getPackages(query);
+
 				const categories = {
-					trusted: packages.filter((pkg) => pkg.provenance === 'trustedPublisher'),
-					provenance: packages.filter((pkg) => pkg.provenance === true),
-					insecure: packages.filter((pkg) => !pkg.provenance),
+					trusted: [] as Array<Package>,
+					provenance: [] as Array<Package>,
+					insecure: [] as Array<Package>,
 				};
+
+				for (const pkg of packages) {
+					if (pkg.trustedPublisher) categories.trusted.push(pkg)
+					else if (pkg.provenance) categories.provenance.push(pkg)
+					else categories.insecure.push(pkg)
+				}
 
 				const resultsTemp = document.querySelector<HTMLTemplateElement>('[data-result-template]')!;
 				const resultsEl = resultsTemp.content.cloneNode(true) as HTMLDivElement;
@@ -256,10 +270,7 @@ const content = {
 			const packageNames = searchJson.objects.map((obj) => obj.package.name);
 			const metaRes = await fetch(`https://npm.antfu.dev/${packageNames.join('+')}?metadata=true`);
 			const metaJson = await metaRes.json();
-			const packages = (Array.isArray(metaJson) ? metaJson : [metaJson]) as Array<{
-				name: string;
-				provenance?: 'trustedPublisher' | boolean;
-			}>;
+			const packages = (Array.isArray(metaJson) ? metaJson : [metaJson]) as Array<Package>;
 			return packages
 				.map((pkg) => ({
 					...pkg,
